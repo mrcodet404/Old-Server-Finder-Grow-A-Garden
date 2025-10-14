@@ -1,0 +1,220 @@
+--// Instant Catch (Blatant) - by Zen 0ns (Fixed by Grok)
+--// Support: Xeno, Delta Executor (UNC safe)
+--// Features: ON/OFF, Minimize, Reopen, Destroy, Dragable UI
+--// Fixes: Separated the remote calls with waits like the example script to prevent bugs during catching, randomized minigame args in a wider range, added human-like delays
+--// Update: Made 2x faster by halving the delays (charge: 0.5->0.25, minigame:1->0.5, cycle:1->0.5, loop:0.05->0.025)
+--// New Update: Made charging rod faster like spam by reducing delays further (charge:0.25->0.01, minigame:0.5->0.01, cycle:0.5->0.01, loop:0.025->0.01), changed minigame args to fixed {-1.233184814453125, 0.9999211088675717} for perfect catches
+
+--// Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+--// Remotes
+local RFChargeFishingRod = ReplicatedStorage.Packages._Index["sleitnick_net@0.2.0"].net["RF/ChargeFishingRod"]
+local RIFT_IS_DETECTED1 = ReplicatedStorage.Packages._Index["sleitnick_net@0.2.0"].net["RF/RequestFishingMinigameStarted"]
+local REFishingCompleted = ReplicatedStorage.Packages._Index["sleitnick_net@0.2.0"].net["RE/FishingCompleted"]
+
+--// Variables
+local autoFishEnabled = false
+local fishing = false
+local completionDelay = 0.000001  -- Delay for fishing completion (adjust for human-like)
+local cycleDelay = 0.001  -- Delay between cycles (reduced for spam speed)
+local chargeDelay = 0.00000000001  -- Delay after charging (reduced for spam speed)
+local minigameDelay = 0.3  -- Delay after starting minigame (reduced for spam speed)
+
+--// UI Library
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "InstantCatchUI"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Parent = ScreenGui
+Main.Size = UDim2.new(0, 280, 0, 160)
+Main.Position = UDim2.new(0.5, -140, 0.5, -80)
+Main.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Draggable = true
+Main.Visible = true
+Main.ClipsDescendants = true
+Main.BackgroundTransparency = 0.05
+
+local UICorner = Instance.new("UICorner", Main)
+UICorner.CornerRadius = UDim.new(0, 12)
+
+local UIStroke = Instance.new("UIStroke", Main)
+UIStroke.Color = Color3.fromRGB(50, 50, 50)
+UIStroke.Thickness = 1
+UIStroke.Transparency = 0.5
+
+local UIGradient = Instance.new("UIGradient", Main)
+UIGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 40)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 20))
+}
+UIGradient.Rotation = 90
+
+local TitleBar = Instance.new("Frame", Main)
+TitleBar.Size = UDim2.new(1, 0, 0, 35)
+TitleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+TitleBar.BorderSizePixel = 0
+
+local TitleBarCorner = Instance.new("UICorner", TitleBar)
+TitleBarCorner.CornerRadius = UDim.new(0, 12)
+
+local TitleBarStroke = Instance.new("UIStroke", TitleBar)
+TitleBarStroke.Color = Color3.fromRGB(60, 60, 60)
+TitleBarStroke.Thickness = 1
+TitleBarStroke.Transparency = 0.3
+
+local Title = Instance.new("TextLabel", TitleBar)
+Title.Text = "🎣 Instant Catch (Blatant)"
+Title.Size = UDim2.new(1, -80, 1, 0)
+Title.Position = UDim2.new(0, 15, 0, 0)
+Title.BackgroundTransparency = 1
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local Status = Instance.new("TextLabel", Main)
+Status.Text = "Status: Idle"
+Status.Size = UDim2.new(1, 0, 0, 25)
+Status.Position = UDim2.new(0, 0, 0.7, 0)
+Status.BackgroundTransparency = 1
+Status.TextColor3 = Color3.fromRGB(200, 200, 200)
+Status.Font = Enum.Font.Gotham
+Status.TextSize = 14
+Status.TextXAlignment = Enum.TextXAlignment.Center
+
+local ToggleButton = Instance.new("TextButton", Main)
+ToggleButton.Text = "Turn ON"
+ToggleButton.Size = UDim2.new(0.8, 0, 0, 40)
+ToggleButton.Position = UDim2.new(0.1, 0, 0.3, 0)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.TextSize = 16
+local ToggleCorner = Instance.new("UICorner", ToggleButton)
+ToggleCorner.CornerRadius = UDim.new(0, 8)
+local ToggleStroke = Instance.new("UIStroke", ToggleButton)
+ToggleStroke.Color = Color3.fromRGB(80, 200, 95)
+ToggleStroke.Thickness = 1
+ToggleStroke.Transparency = 0.6
+
+local Minimize = Instance.new("TextButton", TitleBar)
+Minimize.Text = "-"
+Minimize.Size = UDim2.new(0, 30, 0, 30)
+Minimize.Position = UDim2.new(1, -70, 0, 2.5)
+Minimize.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
+Minimize.TextColor3 = Color3.fromRGB(0, 0, 0)
+Minimize.Font = Enum.Font.GothamBold
+Minimize.TextSize = 18
+local MinCorner = Instance.new("UICorner", Minimize)
+MinCorner.CornerRadius = UDim.new(0, 6)
+
+local Close = Instance.new("TextButton", TitleBar)
+Close.Text = "×"
+Close.Size = UDim2.new(0, 30, 0, 30)
+Close.Position = UDim2.new(1, -35, 0, 2.5)
+Close.BackgroundColor3 = Color3.fromRGB(255, 75, 75)
+Close.TextColor3 = Color3.fromRGB(255, 255, 255)
+Close.Font = Enum.Font.GothamBold
+Close.TextSize = 18
+local CloseCorner = Instance.new("UICorner", Close)
+CloseCorner.CornerRadius = UDim.new(0, 6)
+
+local ReopenBtn = Instance.new("TextButton", ScreenGui)
+ReopenBtn.Text = "🎣"
+ReopenBtn.Size = UDim2.new(0, 50, 0, 50)
+ReopenBtn.Position = UDim2.new(0, 20, 0.8, 0)
+ReopenBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+ReopenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ReopenBtn.Font = Enum.Font.GothamBold
+ReopenBtn.TextSize = 22
+ReopenBtn.Visible = false
+local ReopenCorner = Instance.new("UICorner", ReopenBtn)
+ReopenCorner.CornerRadius = UDim.new(0, 10)
+local ReopenStroke = Instance.new("UIStroke", ReopenBtn)
+ReopenStroke.Color = Color3.fromRGB(80, 200, 95)
+ReopenStroke.Thickness = 1
+ReopenStroke.Transparency = 0.5
+
+--// Auto Fish Function
+local function autoFish()
+    while autoFishEnabled do
+        if not fishing then
+            fishing = true
+            Status.Text = "Status: Charging Rod..."
+            
+            -- Step 1: Charge Fishing Rod
+            local success1 = pcall(function()
+                RFChargeFishingRod:InvokeServer(workspace:GetServerTimeNow())
+            end)
+            wait(chargeDelay)
+            
+            -- Step 2: Start Fishing Minigame
+            Status.Text = "Status: Starting Minigame..."
+            local success2 = pcall(function()
+                RIFT_IS_DETECTED1:InvokeServer(-1.233184814453125, 0.9999211088675717)
+            end)
+            wait(minigameDelay)
+            
+            -- Step 3: Complete Fishing
+            Status.Text = "Status: Completing Fish..."
+            wait(completionDelay)
+            local success3 = pcall(function()
+                REFishingCompleted:FireServer()
+            end)
+            
+            fishing = false
+            Status.Text = "Status: Waiting..."
+            wait(cycleDelay)
+        end
+        wait(0.01)  -- Small loop wait for responsiveness (reduced for spam speed)
+    end
+    Status.Text = "Status: Idle"
+end
+
+--// Logic
+local minimized = false
+
+ToggleButton.MouseButton1Click:Connect(function()
+    autoFishEnabled = not autoFishEnabled
+    if autoFishEnabled then
+        ToggleButton.Text = "Turn OFF"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+        ToggleStroke.Color = Color3.fromRGB(220, 80, 80)
+        Status.Text = "Status: ON"
+        Status.TextColor3 = Color3.fromRGB(60, 180, 75)
+        task.spawn(autoFish)
+    else
+        ToggleButton.Text = "Turn ON"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+        ToggleStroke.Color = Color3.fromRGB(80, 200, 95)
+        Status.Text = "Status: OFF"
+        Status.TextColor3 = Color3.fromRGB(200, 60, 60)
+        fishing = false
+    end
+end)
+
+Minimize.MouseButton1Click:Connect(function()
+    if minimized then return end
+    minimized = true
+    Main.Visible = false
+    ReopenBtn.Visible = true
+end)
+
+ReopenBtn.MouseButton1Click:Connect(function()
+    minimized = false
+    Main.Visible = true
+    ReopenBtn.Visible = false
+end)
+
+Close.MouseButton1Click:Connect(function()
+    autoFishEnabled = false
+    ScreenGui:Destroy()
+end)

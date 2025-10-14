@@ -3,7 +3,6 @@
 --// Features: ON/OFF, Minimize, Reopen, Destroy, Dragable UI
 --// Fixes: Separated the remote calls with waits like the example script to prevent bugs during catching, randomized minigame args in a wider range, added human-like delays
 --// Update: Made 2x faster by halving the delays (charge: 0.5->0.25, minigame:1->0.5, cycle:1->0.5, loop:0.05->0.025)
---// New Update: Made charging rod faster like spam by reducing delays further (charge:0.25->0.01, minigame:0.5->0.01, cycle:0.5->0.01, loop:0.025->0.01), changed minigame args to fixed {-1.233184814453125, 0.9999211088675717} for perfect catches
 
 --// Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,10 +17,10 @@ local REFishingCompleted = ReplicatedStorage.Packages._Index["sleitnick_net@0.2.
 --// Variables
 local autoFishEnabled = false
 local fishing = false
-local completionDelay = 0.000001  -- Delay for fishing completion (adjust for human-like)
-local cycleDelay = 0.1  -- Delay between cycles (reduced for spam speed)
-local chargeDelay = 0.000001  -- Delay after charging (reduced for spam speed)
-local minigameDelay = 0.5  -- Delay after starting minigame (reduced for spam speed)
+local completionDelay = 0.0001  -- Delay for fishing completion (adjust for human-like)
+local cycleDelay = 0.1  -- Delay between cycles (halved from 1)
+local chargeDelay = 0.001  -- Delay after charging (halved from 0.5)
+local minigameDelay = 0.5  -- Delay after starting minigame (halved from 1)
 
 --// UI Library
 local ScreenGui = Instance.new("ScreenGui")
@@ -158,8 +157,10 @@ local function autoFish()
             
             -- Step 2: Start Fishing Minigame
             Status.Text = "Status: Starting Minigame..."
+            local minigameArg1 = math.random() * 2 + 1  -- Around 1 to 3, based on spied values
+            local minigameArg2 = math.random()
             local success2 = pcall(function()
-                RIFT_IS_DETECTED1:InvokeServer(-1.233184814453125, 0.9999211088675717)
+                RIFT_IS_DETECTED1:InvokeServer(minigameArg1, minigameArg2)
             end)
             wait(minigameDelay)
             
@@ -174,7 +175,7 @@ local function autoFish()
             Status.Text = "Status: Waiting..."
             wait(cycleDelay)
         end
-        wait(0.01)  -- Small loop wait for responsiveness (reduced for spam speed)
+        wait(0.025)  -- Small loop wait for responsiveness (halved from 0.05)
     end
     Status.Text = "Status: Idle"
 end

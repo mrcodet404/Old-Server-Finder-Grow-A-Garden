@@ -19,9 +19,9 @@ local REFishingCompleted = ReplicatedStorage.Packages._Index["sleitnick_net@0.2.
 local autoFishEnabled = false
 local fishing = false
 local completionDelay = 0.000001  -- Delay for fishing completion (adjust for human-like)
-local cycleDelay = 0.001  -- Delay between cycles (reduced for spam speed)
-local chargeDelay = 0.0001  -- Delay after charging (reduced for spam speed)
-local minigameDelay = 0.5  -- Delay after starting minigame (reduced for spam speed)
+local cycleDelay = 0.0001  -- Delay between cycles (reduced for spam speed)
+local chargeDelay = 0.00001  -- Delay after charging (reduced for spam speed)
+local minigameDelay = 0.45  -- Delay after starting minigame (reduced for spam speed)
 
 --// UI Library
 local ScreenGui = Instance.new("ScreenGui")

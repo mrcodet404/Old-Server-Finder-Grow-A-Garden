@@ -21,7 +21,7 @@ local fishing = false
 local completionDelay = 0.000001  -- Delay for fishing completion (adjust for human-like)
 local cycleDelay = 0.001  -- Delay between cycles (reduced for spam speed)
 local chargeDelay = 0.00000000001  -- Delay after charging (reduced for spam speed)
-local minigameDelay = 0.3  -- Delay after starting minigame (reduced for spam speed)
+local minigameDelay = 0.4  -- Delay after starting minigame (reduced for spam speed)
 
 --// UI Library
 local ScreenGui = Instance.new("ScreenGui")

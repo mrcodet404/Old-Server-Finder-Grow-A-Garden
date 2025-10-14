@@ -20,7 +20,7 @@ local autoFishEnabled = false
 local fishing = false
 local completionDelay = 0.001  -- Delay for fishing completion (adjust for human-like)
 local cycleDelay = 0  -- Delay between cycles (reduced for spam speed)
-local chargeDelay = 0.001  -- Delay after charging (reduced for spam speed)
+local chargeDelay = 0  -- Delay after charging (reduced for spam speed)
 local minigameDelay = 5  -- Delay after starting minigame (reduced for spam speed)
 
 --// UI Library

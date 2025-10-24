@@ -1,0 +1,494 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+-- Create Window
+local Window = WindUI:CreateWindow({
+    Title = "V I L L A I N S ",
+    Icon = "crown",
+    Author = "Indo Voice",
+    Size = UDim2.fromOffset(580, 460),
+    MinSize = Vector2.new(560, 350),
+    MaxSize = Vector2.new(850, 560),
+    Transparent = true,
+    Theme = "Dark",
+    Resizable = true,
+    SideBarWidth = 200,
+    BackgroundImageTransparency = 0.42,
+    HideSearchBar = true,
+    ScrollBarEnabled = false,
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+    User = {
+        Enabled = true,
+        Anonymous = false,
+        Callback = function() end,
+    },
+    KeySystem = {
+        Note = "Villains Key System",
+        API = {
+            {
+                Type = "platoboost",
+                ServiceId = 11293,
+                Secret = "6569f8ff-3435-4b85-8ce3-fd8db6e45e8e",
+            },
+        },
+    },
+})
+
+-- ============================================
+-- 🎣 AUTO FISHING SYSTEM - MOBILE ENHANCED
+-- ============================================
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Deteksi Platform
+local function DetectPlatform()
+    if UserInputService.TouchEnabled then
+        if UserInputService.KeyboardEnabled or UserInputService.MouseEnabled then
+            return "PC" -- PC dengan touchscreen
+        else
+            return "MOBILE" -- Mobile murni
+        end
+    else
+        return "PC" -- PC biasa
+    end
+end
+
+local Platform = DetectPlatform()
+local IsMobile = Platform == "MOBILE"
+
+-- Config
+local FishingConfig = {
+    Enabled = false,
+    HideUI = true,
+    HoldDuration = 2, -- Set to 2 seconds as requested
+    DelayAfterCatch = 0.5,
+    DelayBeforeRecast = 1.5,
+    CastInterval = 2,
+}
+
+-- Status
+local FishingStatus = {
+    IsHolding = false,
+    InMinigame = false,
+    LastCastTime = 0,
+    TouchId = 0, -- Untuk tracking touch ID
+}
+
+-- Functions
+local function HideFishingUI()
+    if FishingConfig.HideUI then
+        local ui = PlayerGui:FindFirstChild("FishingUI")
+        if ui then
+            ui:Destroy()
+        end
+    end
+end
+
+local function HasRodEquipped()
+    local character = LocalPlayer.Character
+    if not character then return false end
+    return character:FindFirstChild("Fishing Rod") ~= nil
+end
+
+-- ============================================
+-- 🖱️📱 ENHANCED INPUT SYSTEM
+-- ============================================
+
+-- Get optimal touch position
+local function GetTouchPosition()
+    local camera = workspace.CurrentCamera
+    local viewportSize = camera.ViewportSize
+    -- Center of the screen for consistent touch input
+    local x = viewportSize.X / 2
+    local y = viewportSize.Y / 2
+    return Vector2.new(x, y)
+end
+
+-- PC Input
+local function PCMouseDown()
+    local success, err = pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+    end)
+    if not success then
+        warn("PC Mouse Down failed: " .. tostring(err))
+    end
+end
+
+local function PCMouseUp()
+    local success, err = pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    end)
+    if not success then
+        warn("PC Mouse Up failed: " .. tostring(err))
+    end
+end
+
+-- Mobile Input - Enhanced with single touch ID and fallback
+local function MobileTouchDown()
+    local touchPos = GetTouchPosition()
+    FishingStatus.TouchId = FishingStatus.TouchId + 1
+
+    local success, err = pcall(function()
+        -- Primary: Use touch event with unique ID
+        VirtualInputManager:SendTouchEvent(FishingStatus.TouchId, touchPos.X, touchPos.Y, true, game, 0)
+    end)
+    if not success then
+        warn("Mobile Touch Down failed: " .. tostring(err))
+        -- Fallback: Simulate mouse button
+        pcall(function()
+            VirtualInputManager:SendMouseButtonEvent(touchPos.X, touchPos.Y, 0, true, game, 0)
+        end)
+    end
+    task.wait(0.02) -- Small delay for input registration
+end
+
+local function MobileTouchUp()
+    local touchPos = GetTouchPosition()
+
+    local success, err = pcall(function()
+        -- Primary: Release touch with same ID
+        VirtualInputManager:SendTouchEvent(FishingStatus.TouchId, touchPos.X, touchPos.Y, false, game, 0)
+    end)
+    if not success then
+        warn("Mobile Touch Up failed: " .. tostring(err))
+        -- Fallback: Simulate mouse button release
+        pcall(function()
+            VirtualInputManager:SendMouseButtonEvent(touchPos.X, touchPos.Y, 0, false, game, 0)
+        end)
+    end
+    task.wait(0.02) -- Small delay for input release
+end
+
+-- Universal Input Functions
+local function MouseDown()
+    if FishingStatus.IsHolding then return end
+    FishingStatus.IsHolding = true
+
+    if IsMobile then
+        MobileTouchDown()
+    else
+        PCMouseDown()
+    end
+end
+
+local function MouseUp()
+    if not FishingStatus.IsHolding then return end
+    FishingStatus.IsHolding = false
+
+    if IsMobile then
+        MobileTouchUp()
+    else
+        PCMouseUp()
+    end
+end
+
+-- ============================================
+-- 🎣 AUTO CAST & CATCH
+-- ============================================
+
+local function AutoCast()
+    if not FishingConfig.Enabled then return end
+    if FishingStatus.InMinigame then return end
+    if not HasRodEquipped() then return end
+
+    local currentTime = tick()
+    if currentTime - FishingStatus.LastCastTime < FishingConfig.CastInterval then
+        return
+    end
+
+    FishingStatus.LastCastTime = currentTime
+
+    -- Ensure input registration for mobile
+    if IsMobile then
+        task.wait(0.05)
+    end
+
+    MouseDown()
+    task.wait(FishingConfig.HoldDuration) -- 2 seconds hold
+    MouseUp()
+
+    if IsMobile then
+        task.wait(0.05)
+    end
+end
+
+local function AutoCatch()
+    if not FishingConfig.Enabled then return end
+
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    local rod = character:FindFirstChild("Fishing Rod")
+    if not rod then return end
+
+    local catchRemote = rod:FindFirstChild("Catch")
+    if not catchRemote then return end
+
+    local success, err = pcall(function()
+        catchRemote:FireServer(true)
+    end)
+
+    if success then
+        FishingStatus.InMinigame = false
+        task.wait(FishingConfig.DelayAfterCatch)
+        HideFishingUI()
+        task.wait(FishingConfig.DelayBeforeRecast)
+        if FishingConfig.Enabled then
+            AutoCast()
+        end
+    else
+        warn("AutoCatch failed: " .. tostring(err))
+        FishingStatus.InMinigame = false
+    end
+end
+
+-- Deteksi Minigame via UI
+PlayerGui.ChildAdded:Connect(function(child)
+    if child.Name == "FishingUI" and FishingConfig.Enabled and not FishingStatus.InMinigame then
+        FishingStatus.InMinigame = true
+        task.wait(0.1)
+        AutoCatch()
+    end
+end)
+
+-- Connect Events
+local function ConnectFishingEvents()
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    local rod = character:WaitForChild("Fishing Rod", 10)
+    if not rod then return end
+
+    local startMinigame = rod:FindFirstChild("StartMinigame")
+    if startMinigame then
+        startMinigame.OnClientEvent:Connect(function()
+            if FishingConfig.Enabled and not FishingStatus.InMinigame then
+                FishingStatus.InMinigame = true
+                task.wait(0.1)
+                AutoCatch()
+            end
+        end)
+    end
+
+    local lureLanded = rod:FindFirstChild("LureLanded")
+    if lureLanded then
+        lureLanded.OnClientEvent:Connect(function() end)
+    end
+
+    local canceled = rod:FindFirstChild("FishingCanceled")
+    if canceled then
+        canceled.OnClientEvent:Connect(function()
+            FishingStatus.InMinigame = false
+            if FishingStatus.IsHolding then
+                MouseUp()
+            end
+            HideFishingUI()
+            task.wait(2)
+            if FishingConfig.Enabled then AutoCast() end
+        end)
+    end
+end
+
+-- Reconnect on Respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    FishingStatus.InMinigame = false
+    FishingStatus.IsHolding = false
+
+    task.wait(3)
+    ConnectFishingEvents()
+
+    task.wait(2)
+    if FishingConfig.Enabled then
+        AutoCast()
+    end
+end)
+
+-- Auto Loop
+task.spawn(function()
+    task.wait(5)
+
+    while task.wait(FishingConfig.CastInterval) do
+        if not FishingConfig.Enabled then continue end
+        if FishingStatus.InMinigame then continue end
+        if FishingStatus.IsHolding then continue end
+
+        local timeSinceLastCast = tick() - FishingStatus.LastCastTime
+        if timeSinceLastCast >= FishingConfig.CastInterval then
+            AutoCast()
+        end
+
+        HideFishingUI()
+    end
+end)
+
+-- Anti AFK
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- Initialize
+ConnectFishingEvents()
+
+-- ============================================
+-- 🎨 UI TABS & CONTROLS
+-- ============================================
+
+local Tab = Window:Tab({
+    Title = "Fishing",
+    Icon = "fish",
+    Locked = false,
+})
+
+-- Keybind (PC only)
+if not IsMobile then
+    local Keybind = Tab:Keybind({
+        Title = "Keybind",
+        Desc = "Keybind to open UI",
+        Value = "V",
+        Callback = function(v)
+            Window:SetToggleKey(Enum.KeyCode[v])
+        end
+    })
+end
+
+-- Section: Auto Fishing
+Tab:Section({
+    Title = "Auto Fishing"
+})
+
+-- Toggle Auto Fish
+Tab:Toggle({
+    Title = "Auto Fish",
+    Desc = "Automatically cast and catch fish instantly",
+    Value = false,
+    Callback = function(state)
+        FishingConfig.Enabled = state
+        if state then
+            task.wait(1)
+            if HasRodEquipped() then
+                AutoCast()
+            else
+                WindUI:Notify({
+                    Title = "Auto Fish",
+                    Content = "Please Equip Rod First",
+                    Duration = 5,
+                    Icon = "fish",
+                })
+            end
+        else
+            if FishingStatus.IsHolding then
+                MouseUp()
+            end
+        end
+    end
+})
+
+-- Toggle Hide UI
+Tab:Toggle({
+    Title = "Hide Fishing UI",
+    Desc = "Automatically hide fishing minigame UI",
+    Value = true,
+    Callback = function(state)
+        FishingConfig.HideUI = state
+    end
+})
+
+-- Section: Settings
+Tab:Section({
+    Title = "Settings"
+})
+
+-- Slider Cast Power
+Tab:Slider({
+    Title = "Cast Power",
+    Desc = "Hold duration to charge cast power",
+    Step = 0.1,
+    Value = {
+        Min = 1,
+        Max = 2.5,
+        Default = 2, -- Set to 2 seconds for consistency
+    },
+    Callback = function(value)
+        FishingConfig.HoldDuration = value
+    end
+})
+
+-- Slider Delay After Catch
+Tab:Slider({
+    Title = "Delay After Catch",
+    Desc = "Delay after catching fish (seconds)",
+    Step = 0.1,
+    Value = {
+        Min = 0.1,
+        Max = 2,
+        Default = 0.6,
+    },
+    Callback = function(value)
+        FishingConfig.DelayAfterCatch = value
+    end
+})
+
+-- Slider Delay Before Recast
+Tab:Slider({
+    Title = "Delay Before Recast",
+    Desc = "Delay before casting again (seconds)",
+    Step = 0.1,
+    Value = {
+        Min = 0.5,
+        Max = 5,
+        Default = 1.1,
+    },
+    Callback = function(value)
+        FishingConfig.DelayBeforeRecast = value
+    end
+})
+
+-- Section: Mobile Tools
+if IsMobile then
+    Tab:Section({
+        Title = "Mobile Tools"
+    })
+
+    Tab:Button({
+        Title = "Test Cast",
+        Desc = "Test manual cast for troubleshooting",
+        Callback = function()
+            if HasRodEquipped() then
+                AutoCast()
+                WindUI:Notify({
+                    Title = "Test Cast",
+                    Content = "Casting initiated!",
+                    Duration = 2,
+                    Icon = "fish",
+                })
+            else
+                WindUI:Notify({
+                    Title = "Test Cast",
+                    Content = "No rod equipped!",
+                    Duration = 2,
+                    Icon = "alert-circle",
+                })
+            end
+        end
+    })
+
+    Tab:Label({
+        Title = "Touch Position",
+        Desc = "Center screen: " .. tostring(math.floor(GetTouchPosition().X)) .. ", " .. tostring(math.floor(GetTouchPosition().Y))
+    })
+end
+
+-- Success notification
+WindUI:Notify({
+    Title = "Villains Hub",
+    Content = "Auto Fish Loaded | " .. Platform,
+    Duration = 3,
+    Icon = "crown",
+})

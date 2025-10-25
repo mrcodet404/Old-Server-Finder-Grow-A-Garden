@@ -38,7 +38,7 @@ local Window = WindUI:CreateWindow({
 })
 
 -- ============================================
--- 🎣 AUTO FISHING SYSTEM - MOBILE OPTIMIZED
+-- 🎣 AUTO FISHING SYSTEM - CONTINUOUS HOLD LOOP
 -- ============================================
 
 local Players = game:GetService("Players")
@@ -48,7 +48,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Deteksi Platform yang lebih akurat
+-- Deteksi Platform
 local function DetectPlatform()
     local touchEnabled = UserInputService.TouchEnabled
     local mouseEnabled = UserInputService.MouseEnabled
@@ -57,7 +57,7 @@ local function DetectPlatform()
     if touchEnabled and not mouseEnabled and not keyboardEnabled then
         return "MOBILE"
     elseif touchEnabled and (mouseEnabled or keyboardEnabled) then
-        return "TABLET" -- Tablet atau PC dengan touchscreen
+        return "TABLET"
     else
         return "PC"
     end
@@ -70,10 +70,10 @@ local IsMobile = (Platform == "MOBILE" or Platform == "TABLET")
 local FishingConfig = {
     Enabled = false,
     HideUI = true,
-    HoldDuration = IsMobile and 1.8 or 1.5, -- Lebih lama untuk mobile
+    HoldDuration = 2, -- Default 2 detik
+    DelayAfterRelease = 0.3, -- Delay setelah lepas touch sebelum hold lagi
     DelayAfterCatch = 0.5,
-    DelayBeforeRecast = 1.5,
-    CastInterval = 2.5,
+    DelayBeforeRecast = 1,
     DebugMode = false,
 }
 
@@ -81,8 +81,7 @@ local FishingConfig = {
 local FishingStatus = {
     IsHolding = false,
     InMinigame = false,
-    LastCastTime = 0,
-    CurrentHoldTime = 0,
+    CastLoopRunning = false,
     HoldConnection = nil,
 }
 
@@ -109,169 +108,153 @@ local function HasRodEquipped()
 end
 
 -- ============================================
--- 🖱️📱 IMPROVED INPUT SYSTEM
+-- 🖱️📱 INPUT SYSTEM
 -- ============================================
 
--- Get optimal touch/click position
 local function GetInputPosition()
     local camera = workspace.CurrentCamera
     local viewportSize = camera.ViewportSize
-    
-    -- Gunakan center screen untuk reliability
     local x = viewportSize.X / 2
     local y = viewportSize.Y / 2
-    
     return Vector2.new(x, y)
 end
 
--- MOBILE: Touch Down (Improved)
+-- MOBILE: Touch Down
 local function MobileTouchDown()
     local pos = GetInputPosition()
-    DebugLog("Touch Down at: " .. tostring(pos))
+    DebugLog("📱 Touch Down at: " .. tostring(pos))
     
-    -- PRIMARY METHOD: Mouse Button Event (paling reliable di mobile Roblox)
-    local success1 = pcall(function()
+    pcall(function()
         VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
     end)
     
-    if not success1 then
-        -- FALLBACK: Direct keyboard event (beberapa game pakai ini)
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonR2, false, game)
-        end)
-    end
-    
-    task.wait(0.02) -- Small delay untuk ensure registration
+    task.wait(0.02)
 end
 
--- MOBILE: Touch Up (Improved)
+-- MOBILE: Touch Up
 local function MobileTouchUp()
     local pos = GetInputPosition()
-    DebugLog("Touch Up at: " .. tostring(pos))
+    DebugLog("📱 Touch Up at: " .. tostring(pos))
     
-    local success1 = pcall(function()
+    pcall(function()
         VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
     end)
-    
-    if not success1 then
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonR2, false, game)
-        end)
-    end
     
     task.wait(0.02)
 end
 
 -- PC: Mouse Events
 local function PCMouseDown()
-    DebugLog("Mouse Down")
+    DebugLog("🖱️ Mouse Down")
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
 end
 
 local function PCMouseUp()
-    DebugLog("Mouse Up")
+    DebugLog("🖱️ Mouse Up")
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end
 
--- ============================================
--- 🎯 UNIVERSAL HOLD SYSTEM (PC & MOBILE)
--- ============================================
-
-local function StartHold()
-    if FishingStatus.IsHolding then return end
-    
-    FishingStatus.IsHolding = true
-    FishingStatus.CurrentHoldTime = 0
-    
-    -- Send initial press
+-- Universal Input
+local function InputDown()
     if IsMobile then
         MobileTouchDown()
     else
         PCMouseDown()
     end
-    
-    DebugLog("Hold Started - Duration: " .. FishingConfig.HoldDuration .. "s")
-    
-    -- Create hold connection using RunService for precise timing
-    if FishingStatus.HoldConnection then
-        FishingStatus.HoldConnection:Disconnect()
-    end
-    
-    local startTime = tick()
-    
-    FishingStatus.HoldConnection = RunService.Heartbeat:Connect(function(delta)
-        if not FishingStatus.IsHolding then
-            if FishingStatus.HoldConnection then
-                FishingStatus.HoldConnection:Disconnect()
-                FishingStatus.HoldConnection = nil
-            end
-            return
-        end
-        
-        FishingStatus.CurrentHoldTime = tick() - startTime
-        
-        -- Check if hold duration reached
-        if FishingStatus.CurrentHoldTime >= FishingConfig.HoldDuration then
-            -- Hold duration completed, release
-            EndHold()
-        end
-    end)
 end
 
-local function EndHold()
-    if not FishingStatus.IsHolding then return end
-    
-    DebugLog("Hold Ended - Held for: " .. string.format("%.2f", FishingStatus.CurrentHoldTime) .. "s")
-    
-    FishingStatus.IsHolding = false
-    
-    -- Disconnect hold monitor
-    if FishingStatus.HoldConnection then
-        FishingStatus.HoldConnection:Disconnect()
-        FishingStatus.HoldConnection = nil
-    end
-    
-    -- Send release
+local function InputUp()
     if IsMobile then
         MobileTouchUp()
     else
         PCMouseUp()
     end
-    
-    FishingStatus.CurrentHoldTime = 0
 end
 
 -- ============================================
--- 🎣 AUTO CAST & CATCH
+-- 🔁 CONTINUOUS HOLD-RELEASE LOOP
 -- ============================================
 
-local function AutoCast()
-    if not FishingConfig.Enabled then return end
-    if FishingStatus.InMinigame then return end
-    if not HasRodEquipped() then return end
-    
-    local currentTime = tick()
-    if currentTime - FishingStatus.LastCastTime < 2 then
-        return
+-- Perform single hold-release cycle
+local function PerformHoldCycle()
+    if FishingStatus.InMinigame then 
+        DebugLog("⏸️ Skipping cast - in minigame")
+        return 
     end
     
-    FishingStatus.LastCastTime = currentTime
-    DebugLog("=== AUTO CAST STARTED ===")
-    
-    -- Extra delay untuk mobile stability
-    if IsMobile then
-        task.wait(0.1)
+    if not HasRodEquipped() then 
+        DebugLog("⚠️ No rod equipped!")
+        return 
     end
     
-    -- Use new hold system
-    StartHold()
-    -- Hold will automatically release after duration via RunService
+    -- STEP 1: Press Down
+    DebugLog("⬇️ HOLD START (Duration: " .. FishingConfig.HoldDuration .. "s)")
+    FishingStatus.IsHolding = true
+    InputDown()
+    
+    -- STEP 2: Hold for duration
+    task.wait(FishingConfig.HoldDuration)
+    
+    -- STEP 3: Release
+    DebugLog("⬆️ HOLD RELEASE")
+    InputUp()
+    FishingStatus.IsHolding = false
+    
+    -- STEP 4: Wait before next cycle
+    DebugLog("⏳ Waiting " .. FishingConfig.DelayAfterRelease .. "s before next cast...")
+    task.wait(FishingConfig.DelayAfterRelease)
 end
+
+-- Main continuous loop
+local function StartCastLoop()
+    if FishingStatus.CastLoopRunning then 
+        DebugLog("⚠️ Cast loop already running!")
+        return 
+    end
+    
+    FishingStatus.CastLoopRunning = true
+    DebugLog("🔄 CAST LOOP STARTED")
+    
+    task.spawn(function()
+        while FishingConfig.Enabled and task.wait(0.1) do
+            if not FishingStatus.InMinigame then
+                PerformHoldCycle()
+            else
+                DebugLog("⏸️ Paused - waiting for minigame to finish...")
+                task.wait(1)
+            end
+        end
+        
+        -- Cleanup when stopped
+        if FishingStatus.IsHolding then
+            InputUp()
+            FishingStatus.IsHolding = false
+        end
+        
+        FishingStatus.CastLoopRunning = false
+        DebugLog("🛑 CAST LOOP STOPPED")
+    end)
+end
+
+local function StopCastLoop()
+    FishingConfig.Enabled = false
+    
+    if FishingStatus.IsHolding then
+        InputUp()
+        FishingStatus.IsHolding = false
+    end
+    
+    DebugLog("🛑 Stopping cast loop...")
+end
+
+-- ============================================
+-- 🎣 AUTO CATCH
+-- ============================================
 
 local function AutoCatch()
     if not FishingConfig.Enabled then return end
     
-    DebugLog("=== AUTO CATCH STARTED ===")
+    DebugLog("🎣 AUTO CATCH STARTED")
     
     local character = LocalPlayer.Character
     if not character then return end
@@ -287,18 +270,16 @@ local function AutoCatch()
     end)
     
     if success then
-        DebugLog("Fish caught successfully!")
+        DebugLog("✅ Fish caught successfully!")
         FishingStatus.InMinigame = false
         
         task.wait(FishingConfig.DelayAfterCatch)
         HideFishingUI()
         
         task.wait(FishingConfig.DelayBeforeRecast)
-        if FishingConfig.Enabled then
-            AutoCast()
-        end
+        -- Loop akan otomatis lanjut karena InMinigame = false
     else
-        DebugLog("Catch failed!")
+        DebugLog("❌ Catch failed!")
         FishingStatus.InMinigame = false
     end
 end
@@ -307,7 +288,14 @@ end
 PlayerGui.ChildAdded:Connect(function(child)
     if child.Name == "FishingUI" and FishingConfig.Enabled and not FishingStatus.InMinigame then
         FishingStatus.InMinigame = true
-        DebugLog("Minigame detected via UI!")
+        DebugLog("🎮 Minigame detected via UI!")
+        
+        -- Stop holding if currently holding
+        if FishingStatus.IsHolding then
+            InputUp()
+            FishingStatus.IsHolding = false
+        end
+        
         task.wait(0.1)
         AutoCatch()
     end
@@ -321,7 +309,7 @@ local function ConnectFishingEvents()
     local rod = character:WaitForChild("Fishing Rod", 10)
     if not rod then return end
     
-    DebugLog("Connecting fishing events...")
+    DebugLog("🔌 Connecting fishing events...")
     
     -- StartMinigame
     local startMinigame = rod:FindFirstChild("StartMinigame")
@@ -329,7 +317,13 @@ local function ConnectFishingEvents()
         startMinigame.OnClientEvent:Connect(function()
             if FishingConfig.Enabled and not FishingStatus.InMinigame then
                 FishingStatus.InMinigame = true
-                DebugLog("Minigame detected via StartMinigame event!")
+                DebugLog("🎮 Minigame started!")
+                
+                if FishingStatus.IsHolding then
+                    InputUp()
+                    FishingStatus.IsHolding = false
+                end
+                
                 task.wait(0.1)
                 AutoCatch()
             end
@@ -340,7 +334,7 @@ local function ConnectFishingEvents()
     local lureLanded = rod:FindFirstChild("LureLanded")
     if lureLanded then
         lureLanded.OnClientEvent:Connect(function()
-            DebugLog("Lure landed!")
+            DebugLog("🎣 Lure landed!")
         end)
     end
     
@@ -348,54 +342,32 @@ local function ConnectFishingEvents()
     local canceled = rod:FindFirstChild("FishingCanceled")
     if canceled then
         canceled.OnClientEvent:Connect(function()
-            DebugLog("Fishing canceled!")
+            DebugLog("❌ Fishing canceled!")
             FishingStatus.InMinigame = false
             
             if FishingStatus.IsHolding then
-                EndHold()
+                InputUp()
+                FishingStatus.IsHolding = false
             end
             
             HideFishingUI()
-            task.wait(2)
-            if FishingConfig.Enabled then AutoCast() end
+            task.wait(1)
         end)
     end
 end
 
 -- Reconnect on Respawn
 LocalPlayer.CharacterAdded:Connect(function()
-    DebugLog("Character respawned, resetting...")
+    DebugLog("🔄 Character respawned, resetting...")
     FishingStatus.InMinigame = false
     
     if FishingStatus.IsHolding then
-        EndHold()
+        InputUp()
+        FishingStatus.IsHolding = false
     end
     
     task.wait(3)
     ConnectFishingEvents()
-    
-    task.wait(2)
-    if FishingConfig.Enabled then
-        AutoCast()
-    end
-end)
-
--- Auto Loop
-task.spawn(function()
-    task.wait(5)
-    
-    while task.wait(FishingConfig.CastInterval) do
-        if not FishingConfig.Enabled then continue end
-        if FishingStatus.InMinigame then continue end
-        if FishingStatus.IsHolding then continue end
-        
-        local timeSinceLastCast = tick() - FishingStatus.LastCastTime
-        if timeSinceLastCast >= FishingConfig.CastInterval then
-            AutoCast()
-        end
-        
-        HideFishingUI()
-    end
 end)
 
 -- Anti AFK
@@ -412,16 +384,15 @@ ConnectFishingEvents()
 -- 🎨 UI TABS & CONTROLS
 -- ============================================
 
--- Create Tab
 local Tab = Window:Tab({
     Title = "Fishing",
     Icon = "fish",
     Locked = false,
 })
 
--- Keybind (hanya untuk PC)
+-- Keybind (PC only)
 if not IsMobile then
-    local Keybind = Tab:Keybind({
+    Tab:Keybind({
         Title = "Keybind",
         Desc = "Keybind to open ui",
         Value = "V",
@@ -437,37 +408,48 @@ Tab:Section({
 })
 
 -- Toggle Auto Fish
-local ToggleAutoFish = Tab:Toggle({
+Tab:Toggle({
     Title = "Auto Fish",
-    Desc = "Automatically cast and catch fish instantly",
+    Desc = "Continuous hold-release loop (Hold → Wait → Repeat)",
     Value = false,
     Callback = function(state) 
         FishingConfig.Enabled = state
         
         if state then
-            DebugLog("Auto Fish ENABLED")
-            task.wait(1)
+            DebugLog("✅ Auto Fish ENABLED")
+            
             if HasRodEquipped() then
-                AutoCast()
+                StartCastLoop()
+                WindUI:Notify({
+                    Title = "Auto Fish Started",
+                    Content = "Hold: " .. FishingConfig.HoldDuration .. "s | Loop running...",
+                    Duration = 3,
+                    Icon = "fish",
+                })
             else
+                FishingConfig.Enabled = false
                 WindUI:Notify({
                     Title = "Auto Fish",
-                    Content = "Please Equip Rod First",
+                    Content = "⚠️ Please Equip Rod First!",
                     Duration = 5,
-                    Icon = "fish",
+                    Icon = "alert-circle",
                 })
             end
         else
-            DebugLog("Auto Fish DISABLED")
-            if FishingStatus.IsHolding then
-                EndHold()
-            end
+            DebugLog("🛑 Auto Fish DISABLED")
+            StopCastLoop()
+            WindUI:Notify({
+                Title = "Auto Fish Stopped",
+                Content = "Loop stopped",
+                Duration = 2,
+                Icon = "fish",
+            })
         end
     end
 })
 
 -- Toggle Hide UI
-local ToggleHideUI = Tab:Toggle({
+Tab:Toggle({
     Title = "Hide Fishing UI",
     Desc = "Automatically hide fishing minigame UI",
     Value = true,
@@ -481,31 +463,47 @@ Tab:Section({
     Title = "Settings"
 })
 
--- Slider Cast Power (Hold Duration)
-local SliderCastPower = Tab:Slider({
-    Title = "Cast Power (Hold Time)",
+-- Slider Hold Duration
+Tab:Slider({
+    Title = "Hold Duration",
     Desc = "How long to hold touch/click (seconds)",
     Step = 0.1,
     Value = {
         Min = 0.5,
         Max = 3,
-        Default = IsMobile and 1.8 or 1.5,
+        Default = 2,
     },
     Callback = function(value)
         FishingConfig.HoldDuration = value
-        DebugLog("Hold duration changed to: " .. value .. "s")
+        DebugLog("⏱️ Hold duration: " .. value .. "s")
+    end
+})
+
+-- Slider Delay After Release
+Tab:Slider({
+    Title = "Delay After Release",
+    Desc = "Wait time after releasing before next hold (seconds)",
+    Step = 0.1,
+    Value = {
+        Min = 0.1,
+        Max = 2,
+        Default = 0.3,
+    },
+    Callback = function(value)
+        FishingConfig.DelayAfterRelease = value
+        DebugLog("⏱️ Delay after release: " .. value .. "s")
     end
 })
 
 -- Slider Delay After Catch
-local SliderDelayAfterCatch = Tab:Slider({
+Tab:Slider({
     Title = "Delay After Catch",
     Desc = "Delay after catching fish (seconds)",
     Step = 0.1,
     Value = {
         Min = 0.1,
         Max = 3,
-        Default = 0.60,
+        Default = 0.5,
     },
     Callback = function(value)
         FishingConfig.DelayAfterCatch = value
@@ -513,42 +511,44 @@ local SliderDelayAfterCatch = Tab:Slider({
 })
 
 -- Slider Delay Before Recast
-local SliderDelayBeforeRecast = Tab:Slider({
+Tab:Slider({
     Title = "Delay Before Recast",
-    Desc = "Delay before casting again (seconds)",
+    Desc = "Delay before starting loop again after catch",
     Step = 0.1,
     Value = {
         Min = 0.5,
         Max = 5,
-        Default = 1.10,
+        Default = 1,
     },
     Callback = function(value)
         FishingConfig.DelayBeforeRecast = value
     end
 })
 
--- Section: Mobile/Debug Tools
+-- Section: Tools
 Tab:Section({
     Title = IsMobile and "Mobile Tools" or "Debug Tools"
 })
 
--- Manual Test Cast
+-- Manual Test
 Tab:Button({
-    Title = "Test Cast",
-    Desc = "Test manual cast (hold " .. FishingConfig.HoldDuration .. "s)",
+    Title = "Test Single Cast",
+    Desc = "Test one hold-release cycle",
     Callback = function()
         if HasRodEquipped() then
-            AutoCast()
+            task.spawn(function()
+                PerformHoldCycle()
+            end)
             WindUI:Notify({
                 Title = "Test Cast",
-                Content = "Casting for " .. FishingConfig.HoldDuration .. " seconds...",
+                Content = "Performing single cycle: Hold " .. FishingConfig.HoldDuration .. "s",
                 Duration = 2,
                 Icon = "fish",
             })
         else
             WindUI:Notify({
                 Title = "Test Cast",
-                Content = "No rod equipped!",
+                Content = "⚠️ No rod equipped!",
                 Duration = 2,
                 Icon = "alert-circle",
             })
@@ -556,10 +556,10 @@ Tab:Button({
     end
 })
 
--- Debug Mode Toggle
+-- Debug Mode
 Tab:Toggle({
     Title = "Debug Mode",
-    Desc = "Show debug logs in console (F9)",
+    Desc = "Show detailed logs in console (F9)",
     Value = false,
     Callback = function(state)
         FishingConfig.DebugMode = state
@@ -567,20 +567,24 @@ Tab:Toggle({
     end
 })
 
--- Platform Info
+-- Info
+Tab:Section({
+    Title = "Info"
+})
+
 Tab:Label({
     Title = "Platform: " .. Platform,
-    Desc = "Touch Position: Center (" .. math.floor(GetInputPosition().X) .. ", " .. math.floor(GetInputPosition().Y) .. ")"
+    Desc = "Loop Mode: Hold " .. FishingConfig.HoldDuration .. "s → Release → Wait " .. FishingConfig.DelayAfterRelease .. "s → Repeat"
 })
 
 -- Success notification
 WindUI:Notify({
-    Title = "Villains Hub",
-    Content = "Auto Fish Loaded | Platform: " .. Platform .. " | Hold: " .. FishingConfig.HoldDuration .. "s",
+    Title = "Villains Hub Loaded",
+    Content = Platform .. " | Continuous Hold Loop Mode",
     Duration = 5,
     Icon = "crown",
 })
 
-DebugLog("=== SCRIPT LOADED SUCCESSFULLY ===")
+DebugLog("=== SCRIPT LOADED ===")
 DebugLog("Platform: " .. Platform)
-DebugLog("Default Hold Duration: " .. FishingConfig.HoldDuration .. "s")
+DebugLog("Mode: Continuous Hold-Release Loop")
